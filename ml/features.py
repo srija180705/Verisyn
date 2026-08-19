@@ -31,13 +31,14 @@ from uuid import UUID
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "backend"))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select
 
-from app.core.database import engine  # noqa: E402
-from app.models import Transaction, Event  # noqa: E402
+from app.core.database import engine
+from app.models import Transaction, Event
 
 WINDOW_10M = timedelta(minutes=10)
 WINDOW_1H = timedelta(hours=1)
+WINDOW_30D = timedelta(days=30)
 
 FEATURE_COLUMNS = [
     "amount",
@@ -127,8 +128,12 @@ def new_feature_state() -> dict:
     beginning of a real-time session)."""
     return {
         "customers": {},  # customer_id -> per-customer running aggregates
-        "device_accounts": defaultdict(set),  # device_id -> set(account_id)
-        "ip_accounts": defaultdict(set),  # ip_identity_id -> set(account_id)
+        # device_id / ip_identity_id -> list of (occurred_at, account_id),
+        # append-only in chronological order. Kept as a full history (not
+        # just a set) so accounts_per_device/accounts_per_ip can be
+        # windowed to "the previous 30 days" rather than all-time.
+        "device_history": defaultdict(list),
+        "ip_history": defaultdict(list),
     }
 
 
@@ -149,6 +154,19 @@ def _count_since(times: list[datetime], now: datetime, window: timedelta) -> int
     threshold = now - window
     idx = bisect.bisect_left(times, threshold)
     return len(times) - idx
+
+
+def _distinct_accounts_since(
+    history: list[tuple[datetime, object]], now: datetime, window: timedelta
+) -> int:
+    """Number of distinct account_ids in a (occurred_at, account_id) history
+    list within [now - window, now). `history` is sorted ascending by
+    occurred_at (append-only, chronological input), so this is a bisect
+    followed by a scan of just the windowed tail - not the full history.
+    """
+    threshold = now - window
+    idx = bisect.bisect_left(history, (threshold,))
+    return len({account_id for _, account_id in history[idx:]})
 
 
 def compute_transaction_features(
@@ -185,10 +203,18 @@ def compute_transaction_features(
     transactions_last_1h = _count_since(cust["txn_times"], occurred_at, WINDOW_1H)
 
     is_new_device = device_id is not None and device_id not in cust["devices_seen"]
-    accounts_per_device = len(state["device_accounts"][device_id]) if device_id else 0
+    accounts_per_device = (
+        _distinct_accounts_since(state["device_history"][device_id], occurred_at, WINDOW_30D)
+        if device_id
+        else 0
+    )
 
     is_new_ip = ip_identity_id is not None and ip_identity_id not in cust["ips_seen"]
-    accounts_per_ip = len(state["ip_accounts"][ip_identity_id]) if ip_identity_id else 0
+    accounts_per_ip = (
+        _distinct_accounts_since(state["ip_history"][ip_identity_id], occurred_at, WINDOW_30D)
+        if ip_identity_id
+        else 0
+    )
 
     time_since_last_transaction_seconds = (
         (occurred_at - cust["last_txn_time"]).total_seconds()
@@ -227,10 +253,10 @@ def compute_transaction_features(
     cust["last_txn_time"] = occurred_at
     if device_id:
         cust["devices_seen"].add(device_id)
-        state["device_accounts"][device_id].add(account_id)
+        state["device_history"][device_id].append((occurred_at, account_id))
     if ip_identity_id:
         cust["ips_seen"].add(ip_identity_id)
-        state["ip_accounts"][ip_identity_id].add(account_id)
+        state["ip_history"][ip_identity_id].append((occurred_at, account_id))
     if location:
         cust["location_counts"][location] += 1
 
