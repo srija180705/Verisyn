@@ -381,7 +381,11 @@ def generate_transactions_and_labels(
             continue
         baseline = customer["_typical_amount"]
         scenario = rng.choice(scenario_pool)
-        base_time = _random_timestamp(rng, days_back=30)
+        # Full HISTORY_DAYS range (not just the most recent 30 days) so
+        # suspicious scenarios are spread across the whole timeline, not
+        # concentrated at the end where an 80/20 chronological split would
+        # put almost all of them in the test set.
+        base_time = _random_timestamp(rng)
 
         if scenario == "large_amount":
             txn = _new_transaction_row(
@@ -455,7 +459,7 @@ def generate_transactions_and_labels(
         victims = rng.sample(eligible_customers, k=min(rng.randint(3, 6), len(eligible_customers)))
         for customer in victims:
             account = rng.choice(accounts_by_customer[customer["id"]])
-            occurred_at = _random_timestamp(rng, days_back=30)
+            occurred_at = _random_timestamp(rng)
             txn = _new_transaction_row(
                 next_external_id(),
                 customer,
@@ -473,7 +477,7 @@ def generate_transactions_and_labels(
         victims = rng.sample(eligible_customers, k=min(rng.randint(3, 6), len(eligible_customers)))
         for customer in victims:
             account = rng.choice(accounts_by_customer[customer["id"]])
-            occurred_at = _random_timestamp(rng, days_back=30)
+            occurred_at = _random_timestamp(rng)
             txn = _new_transaction_row(
                 next_external_id(),
                 customer,
@@ -496,6 +500,7 @@ def generate_events(
     accounts_by_customer: dict,
     transactions: list[dict],
     labels_by_txn_id: dict,
+    suspicious_customer_ids: set,
 ) -> list[dict]:
     events = []
     event_counter = 0
@@ -549,12 +554,19 @@ def generate_events(
     login_budget = int(remaining * 0.7)
     lifecycle_budget = remaining - login_budget
 
-    # Failed-login bursts for a subset of suspicious customers.
-    num_burst_customers = max(1, int(len(customers) * 0.015))
-    burst_customers = rng.sample(customers, k=min(num_burst_customers, len(customers)))
+    # Failed-login bursts for a subset of the customers actually flagged as
+    # suspicious (not an arbitrary random sample), so this signal is
+    # meaningfully associated with the fraud/suspicious label it represents.
+    suspicious_list = [c for c in customers if c["id"] in suspicious_customer_ids]
+    num_burst_customers = max(1, int(len(suspicious_list) * 0.3)) if suspicious_list else 0
+    burst_customers = (
+        rng.sample(suspicious_list, k=min(num_burst_customers, len(suspicious_list)))
+        if suspicious_list
+        else []
+    )
     burst_events_used = 0
     for customer in burst_customers:
-        base_time = _random_timestamp(rng, days_back=30)
+        base_time = _random_timestamp(rng)
         burst_size = rng.randint(5, 10)
         for _ in range(burst_size):
             if burst_events_used >= login_budget:
@@ -653,8 +665,17 @@ def generate_dataset(config: GenerationConfig) -> GeneratedDataset:
         rng, config, customers, accounts_by_customer, devices, ip_identities
     )
     labels_by_txn_id = {row["transaction_id"]: row for row in labels}
+    suspicious_customer_ids = {
+        row["customer_id"] for row in labels if row["is_suspicious"]
+    }
     events = generate_events(
-        rng, config, customers, accounts_by_customer, transactions, labels_by_txn_id
+        rng,
+        config,
+        customers,
+        accounts_by_customer,
+        transactions,
+        labels_by_txn_id,
+        suspicious_customer_ids,
     )
 
     return GeneratedDataset(

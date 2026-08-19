@@ -8,7 +8,7 @@ per-device / per-ip aggregates) is threaded through pure per-transaction
 feature functions. Processing transactions in chronological order and
 only ever reading state built from *earlier* transactions is what makes
 every feature point-in-time correct - a feature for a transaction at
-time T never sees a transaction, event, or application at or after T.
+time T never sees a transaction or event at or after T.
 
 The same `new_feature_state()` / `compute_transaction_features()` pair
 works for:
@@ -34,7 +34,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "backend"))
 from sqlalchemy import select  # noqa: E402
 
 from app.core.database import engine  # noqa: E402
-from app.models import Transaction, Event, LoanApplication  # noqa: E402
+from app.models import Transaction, Event  # noqa: E402
 
 WINDOW_10M = timedelta(minutes=10)
 WINDOW_1H = timedelta(hours=1)
@@ -44,7 +44,6 @@ FEATURE_COLUMNS = [
     "amount_vs_customer_avg",
     "transactions_last_10m",
     "transactions_last_1h",
-    "applications_last_10m",
     "is_new_device",
     "accounts_per_device",
     "is_new_ip",
@@ -106,20 +105,6 @@ def load_failed_login_times() -> dict[UUID, list[datetime]]:
     return by_customer
 
 
-def load_application_times() -> dict[UUID, list[datetime]]:
-    """customer_id -> sorted list of loan application submitted_at timestamps."""
-    with engine.connect() as conn:
-        rows = conn.execute(
-            select(LoanApplication.customer_id, LoanApplication.submitted_at).order_by(
-                LoanApplication.customer_id, LoanApplication.submitted_at.asc()
-            )
-        ).all()
-    by_customer: dict[UUID, list[datetime]] = defaultdict(list)
-    for customer_id, submitted_at in rows:
-        by_customer[customer_id].append(submitted_at)
-    return by_customer
-
-
 def load_labels(csv_path: Path) -> dict[str, int]:
     """transaction_id (str) -> is_suspicious, from the Phase 2B ML-only CSV.
 
@@ -171,16 +156,15 @@ def compute_transaction_features(
     state: dict,
     location: str | None,
     failed_login_times: list[datetime],
-    application_times: list[datetime],
 ) -> dict:
     """Compute point-in-time features for one transaction, then update
     `state` with this transaction so later (in time) transactions see it.
 
     `txn` must have: customer_id, account_id, device_id, ip_identity_id,
-    amount, occurred_at. `failed_login_times` / `application_times` are the
-    customer's full timestamp history (batch mode reads them from Postgres
-    up front; real-time mode could pass a live-queried slice instead) -
-    only entries strictly before `occurred_at` affect the result.
+    amount, occurred_at. `failed_login_times` is the customer's full
+    timestamp history (batch mode reads it from Postgres up front;
+    real-time mode could pass a live-queried slice instead) - only entries
+    strictly before `occurred_at` affect the result.
     """
     customer_id = txn["customer_id"]
     occurred_at = txn["occurred_at"]
@@ -213,7 +197,6 @@ def compute_transaction_features(
     )
 
     failed_logins_last_10m = _count_since(failed_login_times, occurred_at, WINDOW_10M)
-    applications_last_10m = _count_since(application_times, occurred_at, WINDOW_10M)
 
     usual_location = (
         cust["location_counts"].most_common(1)[0][0]
@@ -227,7 +210,6 @@ def compute_transaction_features(
         "amount_vs_customer_avg": round(amount_vs_customer_avg, 4),
         "transactions_last_10m": transactions_last_10m,
         "transactions_last_1h": transactions_last_1h,
-        "applications_last_10m": applications_last_10m,
         "is_new_device": is_new_device,
         "accounts_per_device": accounts_per_device,
         "is_new_ip": is_new_ip,
@@ -268,7 +250,6 @@ def build_training_dataset(labels_csv_path: Path | None = None) -> list[dict]:
     transactions = load_transactions()
     locations = load_transaction_locations()
     failed_logins_by_customer = load_failed_login_times()
-    applications_by_customer = load_application_times()
 
     labels: dict[str, int] = {}
     if labels_csv_path and labels_csv_path.exists():
@@ -283,7 +264,6 @@ def build_training_dataset(labels_csv_path: Path | None = None) -> list[dict]:
             state,
             locations.get(txn["id"]),
             failed_logins_by_customer.get(customer_id, []),
-            applications_by_customer.get(customer_id, []),
         )
         row = {"transaction_id": txn["id"], **features}
         if labels:
@@ -319,7 +299,6 @@ def _print_inspection(rows: list[dict]) -> None:
         "amount_vs_customer_avg",
         "transactions_last_10m",
         "transactions_last_1h",
-        "applications_last_10m",
         "accounts_per_device",
         "accounts_per_ip",
         "time_since_last_transaction_seconds",
