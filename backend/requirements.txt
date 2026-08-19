@@ -8,3 +8,10 @@ psycopg[binary]==3.2.3
 python-dotenv==1.0.1
 pytest==8.3.4
 httpx==0.28.1
+
+# The /api/v1/fraud/assess endpoint calls into ml/ (features/model/anomaly/
+# rules/risk), which needs these at runtime - not just for ad-hoc ml scripts.
+pandas==2.2.3
+numpy==2.2.1
+scikit-learn==1.6.0
+joblib==1.5.3
