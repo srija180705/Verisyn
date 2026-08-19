@@ -1,0 +1,3 @@
+# No third-party AI/LLM SDK dependencies yet - only abstractions are
+# implemented in this phase. boto3 (for AWS Bedrock) will be added when
+# the real provider implementation is built.
