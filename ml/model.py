@@ -77,6 +77,19 @@ def temporal_train_test_split(
     return train_df, test_df
 
 
+def load_saved_model() -> tuple[LogisticRegression, StandardScaler]:
+    """Load the already-trained model + scaler from disk (no retraining).
+    Used by the fraud assessment API (Phase 6A) for inference.
+    """
+    if not MODEL_PATH.exists() or not SCALER_PATH.exists():
+        raise FileNotFoundError(
+            f"Trained model not found at {MODEL_PATH} - run `python ml/model.py` first."
+        )
+    model = joblib.load(MODEL_PATH)
+    scaler = joblib.load(SCALER_PATH)
+    return model, scaler
+
+
 def train_model(
     train_df: pd.DataFrame,
 ) -> tuple[LogisticRegression, StandardScaler]:
