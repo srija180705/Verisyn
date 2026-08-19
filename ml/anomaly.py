@@ -44,6 +44,19 @@ MODEL_PATH = MODELS_DIR / "isolation_forest.joblib"
 RANDOM_SEED = 42
 
 
+def load_saved_model() -> tuple[IsolationForest, float, float]:
+    """Load the already-trained Isolation Forest + score calibration from
+    disk (no retraining). Used by the fraud assessment API (Phase 6A) for
+    inference.
+    """
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"Trained model not found at {MODEL_PATH} - run `python ml/anomaly.py` first."
+        )
+    saved = joblib.load(MODEL_PATH)
+    return saved["model"], saved["score_min"], saved["score_max"]
+
+
 def train_anomaly_model(train_df: pd.DataFrame) -> tuple[IsolationForest, float, float]:
     """Fit Isolation Forest on the LEGITIMATE (fraud_label == 0) training
     rows only, so it learns what "normal" looks like. `contamination` is

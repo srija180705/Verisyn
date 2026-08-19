@@ -263,6 +263,35 @@ def compute_transaction_features(
     return features
 
 
+def get_features_for_transaction(transaction_id: UUID | str) -> dict | None:
+    """Point-in-time features for a single existing transaction, computed
+    by replaying all transactions up to and including it in chronological
+    order - the same state machinery build_training_dataset() uses, just
+    stopped early. Returns None if transaction_id doesn't exist.
+
+    Used by the fraud assessment API (Phase 6A) for on-demand, real-time
+    style assessment of one transaction, reusing this file's point-in-time
+    logic rather than duplicating it.
+    """
+    target_id = transaction_id if isinstance(transaction_id, UUID) else UUID(str(transaction_id))
+
+    transactions = load_transactions()
+    locations = load_transaction_locations()
+    failed_logins_by_customer = load_failed_login_times()
+
+    state = new_feature_state()
+    for txn in transactions:
+        features = compute_transaction_features(
+            txn,
+            state,
+            locations.get(txn["id"]),
+            failed_logins_by_customer.get(txn["customer_id"], []),
+        )
+        if txn["id"] == target_id:
+            return {"transaction_id": txn["id"], **features}
+    return None
+
+
 # --------------------------------------------------------------------------
 # Batch training dataset
 # --------------------------------------------------------------------------
