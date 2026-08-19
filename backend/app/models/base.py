@@ -1,12 +1,9 @@
 """Base model utilities for common columns and types."""
 from datetime import datetime, timezone
-from typing import Optional
 
-from sqlalchemy import Column, DateTime, func
+from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 import uuid as uuid_lib
-
-from app.core.database import Base
 
 
 class TimestampMixin:
