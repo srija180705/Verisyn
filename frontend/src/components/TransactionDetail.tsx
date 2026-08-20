@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { DemoBadge, isDemoTransaction } from './DemoBadge'
 import { RiskBadge } from './RiskBadge'
 import { apiGet, apiPost } from '../lib/apiClient'
 import type { AIExplanation, Feedback, FeedbackLabel, FraudAssessment, TransactionSummary } from '../lib/types'
@@ -122,9 +121,8 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
     <div className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <h2 className="text-lg font-semibold text-slate-900">
             {transaction.external_transaction_id}
-            {isDemoTransaction(transaction.external_transaction_id) && <DemoBadge />}
           </h2>
           <p className="text-sm text-slate-500">
             {transaction.amount.toFixed(2)} {transaction.currency} &middot;{' '}
@@ -135,7 +133,7 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
       </div>
 
       <div className="mb-4">
-        <div className="mb-1 text-sm font-medium text-slate-700">Transaction</div>
+        <h3 className="mb-1 text-sm font-medium text-slate-700">Transaction</h3>
         <InfoRow label="Status" value={transaction.status} />
         <InfoRow
           label="Timestamp"
@@ -166,7 +164,7 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
       </div>
 
       <div className="mt-4 border-t border-slate-100 pt-4">
-        <div className="mb-2 text-sm font-medium text-slate-700">Reviewer Feedback</div>
+        <h3 className="mb-2 text-sm font-medium text-slate-700">Reviewer Feedback</h3>
         {feedbackStatus === 'error' && (
           <p className="mb-2 text-sm text-red-600">Could not submit feedback. Please try again.</p>
         )}
@@ -206,7 +204,7 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
       </div>
 
       <div className="mt-4">
-        <div className="mb-1 text-sm text-slate-500">Triggered Rules</div>
+        <h3 className="mb-1 text-sm text-slate-500">Triggered Rules</h3>
         {assessment.triggered_rules.length === 0 ? (
           <p className="text-sm text-slate-400">None</p>
         ) : (
@@ -224,7 +222,7 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
       </div>
 
       <div className="mt-4">
-        <div className="mb-1 text-sm font-medium text-slate-700">Behavioral Signals</div>
+        <h3 className="mb-1 text-sm font-medium text-slate-700">Behavioral Signals</h3>
         {FEATURE_DISPLAY_ORDER.filter((key) => key in assessment.features).map((key) => (
           <InfoRow
             key={key}
@@ -236,7 +234,7 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
 
       <div className="mt-4 border-t border-slate-100 pt-4">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-medium text-slate-700">AI Explanation</div>
+          <h3 className="text-sm font-medium text-slate-700">AI Explanation</h3>
           <button
             onClick={handleGenerateExplanation}
             disabled={explanationStatus === 'loading'}
