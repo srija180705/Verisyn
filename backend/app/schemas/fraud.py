@@ -24,6 +24,25 @@ class FraudAssessResponse(BaseModel):
     features: dict[str, float | int | bool]
 
 
+class RuleConfig(BaseModel):
+    name: str
+    weight: int
+    condition: str
+
+
+class RulesConfigResponse(BaseModel):
+    """Read-only view of the deterministic rule engine and risk aggregation
+    constants (ml/rules.py, ml/risk.py) - values are read directly from
+    those modules, never duplicated by hand here.
+    """
+
+    rules: list[RuleConfig]
+    max_rule_score: int
+    signal_weights: dict[str, float]
+    risk_level_thresholds: dict[str, int]
+    decision_by_risk_level: dict[str, str]
+
+
 class AIExplanationResponse(BaseModel):
     """Advisory-only: a plain-language explanation of an already-computed
     assessment. `available=False` when no LLM provider is configured or
