@@ -17,7 +17,7 @@ sys.path.append(str(Path(__file__).resolve().parents[3]))  # repo root
 
 from ml.anomaly import compute_anomaly_scores  # noqa: E402
 from ml.anomaly import load_saved_model as load_anomaly_model  # noqa: E402
-from ml.features import get_features_for_transaction  # noqa: E402
+from ml.features import compute_features_for_new_transaction, get_precomputed_features  # noqa: E402
 from ml.model import FEATURE_COLUMNS  # noqa: E402
 from ml.model import load_saved_model as load_lr_model  # noqa: E402
 from ml.risk import DECISION_BY_RISK_LEVEL, compute_final_risk_score, risk_level_for_score  # noqa: E402
@@ -36,14 +36,31 @@ def assess_transaction(db: Session, transaction_id: UUID) -> dict:
     """Run the full fraud engine for one existing transaction and return
     the combined assessment. Raises TransactionNotFoundError if the
     transaction doesn't exist.
+
+    Two paths, neither of which replays the full transaction history:
+      - historical transaction already covered by the last
+        ml/features.py batch run -> O(1) CSV lookup
+        (get_precomputed_features)
+      - anything else (a new/live transaction) -> point-in-time features
+        computed from just this customer's history and this device/ip's
+        30-day window (compute_features_for_new_transaction)
     """
-    exists = db.query(Transaction.id).filter(Transaction.id == transaction_id).first()
-    if exists is None:
+    txn_row = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if txn_row is None:
         raise TransactionNotFoundError(str(transaction_id))
 
-    features = get_features_for_transaction(transaction_id)
+    features = get_precomputed_features(transaction_id)
     if features is None:
-        raise TransactionNotFoundError(str(transaction_id))
+        txn = {
+            "id": txn_row.id,
+            "customer_id": txn_row.customer_id,
+            "account_id": txn_row.account_id,
+            "device_id": txn_row.device_id,
+            "ip_identity_id": txn_row.ip_identity_id,
+            "amount": txn_row.amount,
+            "occurred_at": txn_row.occurred_at,
+        }
+        features = compute_features_for_new_transaction(txn)
 
     feature_values = {col: features[col] for col in FEATURE_COLUMNS}
 
@@ -78,4 +95,5 @@ def assess_transaction(db: Session, transaction_id: UUID) -> dict:
         "risk_level": risk_level,
         "decision": decision,
         "triggered_rules": triggered_rules,
+        "features": feature_values,
     }
