@@ -34,3 +34,11 @@ export interface FraudAssessment {
   triggered_rules: string[]
   features: Record<string, number | boolean>
 }
+
+// Advisory only - see backend/app/services/ai_explanation.py. Never
+// affects ml_score/anomaly_score/rule_score/final_risk_score/risk_level/decision.
+export interface AIExplanation {
+  transaction_id: string
+  available: boolean
+  explanation: string
+}
