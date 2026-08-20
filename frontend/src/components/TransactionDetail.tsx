@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { RiskBadge } from './RiskBadge'
-import type { FraudAssessment, TransactionSummary } from '../lib/types'
+import { apiPost } from '../lib/apiClient'
+import type { AIExplanation, FraudAssessment, TransactionSummary } from '../lib/types'
 
 interface TransactionDetailProps {
   transaction: TransactionSummary
@@ -54,7 +56,32 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+type ExplanationStatus = 'idle' | 'loading' | 'done' | 'error'
+
 export function TransactionDetail({ transaction, assessment }: TransactionDetailProps) {
+  const [explanationStatus, setExplanationStatus] = useState<ExplanationStatus>('idle')
+  const [explanation, setExplanation] = useState<AIExplanation | null>(null)
+
+  // Switching to a different transaction should not keep showing the
+  // previous one's explanation.
+  useEffect(() => {
+    setExplanationStatus('idle')
+    setExplanation(null)
+  }, [transaction.id])
+
+  async function handleGenerateExplanation() {
+    setExplanationStatus('loading')
+    try {
+      const result = await apiPost<AIExplanation>('/fraud/explain', {
+        transaction_id: transaction.id,
+      })
+      setExplanation(result)
+      setExplanationStatus('done')
+    } catch {
+      setExplanationStatus('error')
+    }
+  }
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-4 flex items-center justify-between">
@@ -128,6 +155,39 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
             value={formatFeatureValue(key, assessment.features[key])}
           />
         ))}
+      </div>
+
+      <div className="mt-4 border-t border-slate-100 pt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-sm font-medium text-slate-700">AI Explanation</div>
+          <button
+            onClick={handleGenerateExplanation}
+            disabled={explanationStatus === 'loading'}
+            className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {explanationStatus === 'loading' ? 'Generating...' : 'Generate AI Explanation'}
+          </button>
+        </div>
+
+        {explanationStatus === 'error' && (
+          <p className="text-sm text-red-600">
+            Could not generate an explanation. Please try again.
+          </p>
+        )}
+
+        {explanationStatus === 'done' && explanation && (
+          <p
+            className={`text-sm ${explanation.available ? 'text-slate-700' : 'text-slate-400 italic'}`}
+          >
+            {explanation.explanation}
+          </p>
+        )}
+
+        {explanationStatus === 'idle' && (
+          <p className="text-sm text-slate-400">
+            Advisory only - does not affect the score or decision above.
+          </p>
+        )}
       </div>
     </div>
   )
