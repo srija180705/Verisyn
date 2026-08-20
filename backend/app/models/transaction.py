@@ -1,5 +1,5 @@
 """Transaction model."""
-from sqlalchemy import Column, String, ForeignKey, Numeric, Enum, DateTime, Index, CheckConstraint
+from sqlalchemy import Column, String, ForeignKey, Numeric, DateTime, Index, CheckConstraint
 from sqlalchemy.orm import relationship
 import enum
 

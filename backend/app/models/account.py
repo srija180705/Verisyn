@@ -1,8 +1,7 @@
 """Account model."""
-from sqlalchemy import Column, String, ForeignKey, Enum, Index
+from sqlalchemy import Column, String, ForeignKey, Index
 from sqlalchemy.orm import relationship
 import enum
-import uuid
 
 from app.core.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin

@@ -1,5 +1,5 @@
 """Loan application model."""
-from sqlalchemy import Column, String, ForeignKey, Numeric, Enum, Index, CheckConstraint, DateTime
+from sqlalchemy import Column, String, ForeignKey, Numeric, Index, CheckConstraint, DateTime
 from sqlalchemy.orm import relationship
 import enum
 

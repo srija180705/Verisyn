@@ -1,5 +1,5 @@
 """Customer model."""
-from sqlalchemy import Column, String, Date, Enum, Index, UniqueConstraint
+from sqlalchemy import Column, String, Date, Index
 from sqlalchemy.orm import relationship
 import enum
 
