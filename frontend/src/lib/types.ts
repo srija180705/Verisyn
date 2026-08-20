@@ -57,3 +57,23 @@ export interface RulesConfig {
   risk_level_thresholds: Record<string, number>
   decision_by_risk_level: Record<string, string>
 }
+
+// Reviewer verdict on a transaction - a label only, never fed back into
+// scoring directly. See backend/app/api/v1/endpoints/feedback.py.
+export type FeedbackLabel = 'confirmed_fraud' | 'confirmed_genuine'
+
+export interface Feedback {
+  transaction_id: string
+  label: FeedbackLabel
+  reviewer: string | null
+  reviewed_at: string
+}
+
+// Current ML model version/provenance - see ml/retrain.py. Visibility
+// only, never used by the scoring pipeline itself.
+export interface ModelInfo {
+  version: number
+  trained_at: string | null
+  feedback_samples_used: number
+  is_retrained: boolean
+}
