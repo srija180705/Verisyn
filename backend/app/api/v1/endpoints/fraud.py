@@ -3,6 +3,7 @@ app.services.fraud_assessment / app.services.ai_explanation, which
 orchestrate the existing ML/rules/risk pipeline and ai/ abstraction. No
 scoring or LLM-calling logic lives in this file.
 """
+import json
 import logging
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.schemas.fraud import (
     AIExplanationResponse,
     FraudAssessRequest,
     FraudAssessResponse,
+    ModelInfoResponse,
     RuleConfig,
     RulesConfigResponse,
 )
@@ -25,10 +27,13 @@ sys.path.append(str(Path(__file__).resolve().parents[5]))  # repo root
 
 from ml import risk as risk_config  # noqa: E402
 from ml import rules as rules_config  # noqa: E402
+from ml.model import MODELS_DIR  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/fraud", tags=["fraud"])
+
+_MODEL_METADATA_PATH = MODELS_DIR / "model_metadata.json"
 
 # Human-readable condition per rule, built from the same named threshold
 # constants ml/rules.py evaluates against - not a second copy of the
@@ -71,6 +76,30 @@ def rules_config_view() -> RulesConfigResponse:
             "HIGH_MAX": risk_config.HIGH_MAX,
         },
         decision_by_risk_level=risk_config.DECISION_BY_RISK_LEVEL,
+    )
+
+
+@router.get("/model-info", response_model=ModelInfoResponse)
+def model_info() -> ModelInfoResponse:
+    """Which model version is currently active, when it was trained, and
+    how many verified feedback samples it used - read directly from
+    ml/models/model_metadata.json, written only by ml/retrain.py after a
+    successful retrain. No metadata file yet means the original
+    (non-retrained) baseline model is still active.
+    """
+    if not _MODEL_METADATA_PATH.exists():
+        return ModelInfoResponse(
+            version=1,
+            trained_at=None,
+            feedback_samples_used=0,
+            is_retrained=False,
+        )
+    metadata = json.loads(_MODEL_METADATA_PATH.read_text())
+    return ModelInfoResponse(
+        version=metadata["version"],
+        trained_at=metadata["trained_at"],
+        feedback_samples_used=metadata["feedback_samples_used"],
+        is_retrained=True,
     )
 
 
