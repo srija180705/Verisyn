@@ -26,6 +26,7 @@ import statistics
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
@@ -263,33 +264,183 @@ def compute_transaction_features(
     return features
 
 
-def get_features_for_transaction(transaction_id: UUID | str) -> dict | None:
-    """Point-in-time features for a single existing transaction, computed
-    by replaying all transactions up to and including it in chronological
-    order - the same state machinery build_training_dataset() uses, just
-    stopped early. Returns None if transaction_id doesn't exist.
+# --------------------------------------------------------------------------
+# Real-time single-transaction path (Phase 7B)
+#
+# Neither function below replays the full transaction history - that
+# approach (replay everything up to the target transaction, same state
+# machinery as build_training_dataset) was tried first and worked
+# correctly, but was O(all transactions) per call - far too slow for a
+# live /fraud/assess request. These give the API a cheap path instead:
+#
+#   - already-scored historical transaction -> O(1) dict lookup in the
+#     precomputed training_features.csv (get_precomputed_features)
+#   - a transaction not in that CSV (a genuinely new/live one) -> scoped
+#     queries for just this customer's history and this device/ip's
+#     30-day window, then ONE call to the existing compute_transaction_features
+#     (compute_features_for_new_transaction) - no full replay, no
+#     duplicated scoring logic.
+# --------------------------------------------------------------------------
 
-    Used by the fraud assessment API (Phase 6A) for on-demand, real-time
-    style assessment of one transaction, reusing this file's point-in-time
-    logic rather than duplicating it.
+@lru_cache(maxsize=1)
+def _load_precomputed_features_by_id(csv_path: str) -> dict[str, dict]:
+    """Load training_features.csv once per process into an in-memory
+    transaction_id -> feature dict. Cached (lru_cache) so repeated lookups
+    across requests don't re-read the file - the CSV only changes when
+    ml/features.py's batch run is re-executed, which happens out of band.
     """
-    target_id = transaction_id if isinstance(transaction_id, UUID) else UUID(str(transaction_id))
+    features_by_id: dict[str, dict] = {}
+    with open(csv_path) as f:
+        for row in csv.DictReader(f):
+            features_by_id[row["transaction_id"]] = {
+                "amount": float(row["amount"]),
+                "amount_vs_customer_avg": float(row["amount_vs_customer_avg"]),
+                "transactions_last_10m": int(row["transactions_last_10m"]),
+                "transactions_last_1h": int(row["transactions_last_1h"]),
+                "is_new_device": row["is_new_device"] == "True",
+                "accounts_per_device": int(row["accounts_per_device"]),
+                "is_new_ip": row["is_new_ip"] == "True",
+                "accounts_per_ip": int(row["accounts_per_ip"]),
+                "time_since_last_transaction_seconds": float(
+                    row["time_since_last_transaction_seconds"]
+                ),
+                "failed_logins_last_10m": int(row["failed_logins_last_10m"]),
+                "location_anomaly": row["location_anomaly"] == "True",
+            }
+    return features_by_id
 
-    transactions = load_transactions()
-    locations = load_transaction_locations()
-    failed_logins_by_customer = load_failed_login_times()
+
+def get_precomputed_features(transaction_id: UUID | str) -> dict | None:
+    """O(1) lookup of a transaction's features from the precomputed
+    ml/data/training_features.csv. Returns None if the CSV is missing or
+    the transaction isn't in it (e.g. it's newer than the last batch run) -
+    callers should fall back to compute_features_for_new_transaction().
+    """
+    csv_path = Path(__file__).parent / "data" / "training_features.csv"
+    if not csv_path.exists():
+        return None
+    features_by_id = _load_precomputed_features_by_id(str(csv_path))
+    row = features_by_id.get(str(transaction_id))
+    if row is None:
+        return None
+    return {"transaction_id": UUID(str(transaction_id)), **row}
+
+
+def _scoped_customer_state(customer_id: UUID, before: datetime) -> dict:
+    """Prior state for ONE customer, built from a customer-scoped query -
+    not the full transaction table. A customer's own history is small
+    (tens of rows), so this is cheap regardless of total dataset size.
+    """
+    cust = _new_customer_state()
+    with engine.connect() as conn:
+        txn_rows = conn.execute(
+            select(
+                Transaction.amount,
+                Transaction.occurred_at,
+                Transaction.device_id,
+                Transaction.ip_identity_id,
+            )
+            .where(Transaction.customer_id == customer_id, Transaction.occurred_at < before)
+            .order_by(Transaction.occurred_at.asc())
+        ).all()
+        location_rows = conn.execute(
+            select(Event.payload)
+            .where(
+                Event.customer_id == customer_id,
+                Event.transaction_id.is_not(None),
+                Event.payload.is_not(None),
+                Event.occurred_at < before,
+            )
+            .order_by(Event.occurred_at.asc())
+        ).all()
+
+    for amount, occurred_at, device_id, ip_identity_id in txn_rows:
+        cust["amount_sum"] += float(amount)
+        cust["amount_count"] += 1
+        cust["txn_times"].append(occurred_at)
+        cust["last_txn_time"] = occurred_at
+        if device_id:
+            cust["devices_seen"].add(device_id)
+        if ip_identity_id:
+            cust["ips_seen"].add(ip_identity_id)
+
+    for (payload,) in location_rows:
+        if payload and "location" in payload:
+            cust["location_counts"][payload["location"]] += 1
+
+    return cust
+
+
+def _scoped_relation_history(
+    column, value, before: datetime
+) -> list[tuple[datetime, UUID]]:
+    """(occurred_at, account_id) pairs for ONE device_id/ip_identity_id
+    within the WINDOW_30D before `before` - a bounded, indexable query
+    (Transaction has indexes on device_id/ip_identity_id/occurred_at), not
+    a scan of the whole transactions table.
+    """
+    if value is None:
+        return []
+    window_start = before - WINDOW_30D
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(Transaction.occurred_at, Transaction.account_id)
+            .where(
+                column == value,
+                Transaction.occurred_at >= window_start,
+                Transaction.occurred_at < before,
+            )
+            .order_by(Transaction.occurred_at.asc())
+        ).all()
+    return [(row.occurred_at, row.account_id) for row in rows]
+
+
+def compute_features_for_new_transaction(txn: dict) -> dict:
+    """Point-in-time features for a transaction that is NOT (yet) in the
+    precomputed training_features.csv, using only the relevant scoped
+    prior history - this customer's own transactions, plus this device's
+    and this IP's 30-day windows - instead of replaying all transactions.
+
+    `txn` must have: id, customer_id, account_id, device_id,
+    ip_identity_id, amount, occurred_at (same shape as load_transactions()
+    rows). Reuses compute_transaction_features() so the scoring logic
+    itself is identical to the batch path - only how the prior state is
+    gathered differs.
+    """
+    customer_id = txn["customer_id"]
+    occurred_at = txn["occurred_at"]
+    device_id = txn["device_id"]
+    ip_identity_id = txn["ip_identity_id"]
 
     state = new_feature_state()
-    for txn in transactions:
-        features = compute_transaction_features(
-            txn,
-            state,
-            locations.get(txn["id"]),
-            failed_logins_by_customer.get(txn["customer_id"], []),
+    state["customers"][customer_id] = _scoped_customer_state(customer_id, occurred_at)
+    if device_id:
+        state["device_history"][device_id] = _scoped_relation_history(
+            Transaction.device_id, device_id, occurred_at
         )
-        if txn["id"] == target_id:
-            return {"transaction_id": txn["id"], **features}
-    return None
+    if ip_identity_id:
+        state["ip_history"][ip_identity_id] = _scoped_relation_history(
+            Transaction.ip_identity_id, ip_identity_id, occurred_at
+        )
+
+    with engine.connect() as conn:
+        failed_login_rows = conn.execute(
+            select(Event.occurred_at)
+            .where(
+                Event.customer_id == customer_id,
+                Event.event_type == "login.failed",
+                Event.occurred_at < occurred_at,
+            )
+            .order_by(Event.occurred_at.asc())
+        ).all()
+    failed_login_times = [row[0] for row in failed_login_rows]
+
+    # A brand-new transaction has no linked event yet at assessment time
+    # (the event would be created after/alongside it in a real system).
+    location = None
+
+    features = compute_transaction_features(txn, state, location, failed_login_times)
+    return {"transaction_id": txn["id"], **features}
 
 
 # --------------------------------------------------------------------------

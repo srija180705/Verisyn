@@ -5,11 +5,10 @@ Trains on the point-in-time features already produced by ml/features.py
 database. fraud_label is used ONLY as the training target, never as an
 input feature.
 """
-import sys
+from functools import lru_cache
 from pathlib import Path
 
 import joblib
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -77,9 +76,13 @@ def temporal_train_test_split(
     return train_df, test_df
 
 
+@lru_cache(maxsize=1)
 def load_saved_model() -> tuple[LogisticRegression, StandardScaler]:
     """Load the already-trained model + scaler from disk (no retraining).
-    Used by the fraud assessment API (Phase 6A) for inference.
+    Used by the fraud assessment API (Phase 6A/7B) for inference. Cached
+    (lru_cache) so a live server reads the joblib files once, not on every
+    request - re-run `python ml/model.py` and restart the server to pick
+    up a newly retrained model.
     """
     if not MODEL_PATH.exists() or not SCALER_PATH.exists():
         raise FileNotFoundError(

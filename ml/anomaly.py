@@ -14,6 +14,7 @@ closely mimics normal behavior can score low. It is reported here as a
 second, independent signal - not a replacement for the classifier.
 """
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import joblib
@@ -44,10 +45,13 @@ MODEL_PATH = MODELS_DIR / "isolation_forest.joblib"
 RANDOM_SEED = 42
 
 
+@lru_cache(maxsize=1)
 def load_saved_model() -> tuple[IsolationForest, float, float]:
     """Load the already-trained Isolation Forest + score calibration from
-    disk (no retraining). Used by the fraud assessment API (Phase 6A) for
-    inference.
+    disk (no retraining). Used by the fraud assessment API (Phase 6A/7B)
+    for inference. Cached (lru_cache) so a live server reads the joblib
+    file once, not on every request (it's ~2MB, so this was previously
+    the largest single cost of assessing a transaction).
     """
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
