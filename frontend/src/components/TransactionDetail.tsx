@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
+import { DemoBadge, isDemoTransaction } from './DemoBadge'
 import { RiskBadge } from './RiskBadge'
-import { apiPost } from '../lib/apiClient'
-import type { AIExplanation, FraudAssessment, TransactionSummary } from '../lib/types'
+import { apiGet, apiPost } from '../lib/apiClient'
+import type { AIExplanation, Feedback, FeedbackLabel, FraudAssessment, TransactionSummary } from '../lib/types'
+
+const FEEDBACK_LABELS: Record<FeedbackLabel, string> = {
+  confirmed_fraud: 'Confirmed Fraud',
+  confirmed_genuine: 'Confirmed Genuine',
+}
 
 interface TransactionDetailProps {
   transaction: TransactionSummary
@@ -57,16 +63,32 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 type ExplanationStatus = 'idle' | 'loading' | 'done' | 'error'
+type FeedbackStatus = 'loading' | 'ready' | 'submitting' | 'error'
 
 export function TransactionDetail({ transaction, assessment }: TransactionDetailProps) {
   const [explanationStatus, setExplanationStatus] = useState<ExplanationStatus>('idle')
   const [explanation, setExplanation] = useState<AIExplanation | null>(null)
 
+  const [feedbackStatus, setFeedbackStatus] = useState<FeedbackStatus>('loading')
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
+
   // Switching to a different transaction should not keep showing the
-  // previous one's explanation.
+  // previous one's explanation or feedback.
   useEffect(() => {
     setExplanationStatus('idle')
     setExplanation(null)
+
+    setFeedbackStatus('loading')
+    setFeedback(null)
+    apiGet<Feedback>(`/feedback/${transaction.id}`)
+      .then((result) => {
+        setFeedback(result)
+        setFeedbackStatus('ready')
+      })
+      .catch(() => {
+        // No feedback submitted yet for this transaction - not an error.
+        setFeedbackStatus('ready')
+      })
   }, [transaction.id])
 
   async function handleGenerateExplanation() {
@@ -82,12 +104,27 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
     }
   }
 
+  async function handleSubmitFeedback(label: FeedbackLabel) {
+    setFeedbackStatus('submitting')
+    try {
+      const result = await apiPost<Feedback>('/feedback', {
+        transaction_id: transaction.id,
+        label,
+      })
+      setFeedback(result)
+      setFeedbackStatus('ready')
+    } catch {
+      setFeedbackStatus('error')
+    }
+  }
+
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
             {transaction.external_transaction_id}
+            {isDemoTransaction(transaction.external_transaction_id) && <DemoBadge />}
           </h2>
           <p className="text-sm text-slate-500">
             {transaction.amount.toFixed(2)} {transaction.currency} &middot;{' '}
@@ -126,6 +163,46 @@ export function TransactionDetail({ transaction, assessment }: TransactionDetail
         <span className="rounded-md bg-slate-900 px-2.5 py-0.5 text-xs font-medium text-white">
           {assessment.decision}
         </span>
+      </div>
+
+      <div className="mt-4 border-t border-slate-100 pt-4">
+        <div className="mb-2 text-sm font-medium text-slate-700">Reviewer Feedback</div>
+        {feedbackStatus === 'error' && (
+          <p className="mb-2 text-sm text-red-600">Could not submit feedback. Please try again.</p>
+        )}
+        {feedback && (
+          <p className="mb-2 text-sm text-slate-600">
+            Marked as <span className="font-medium">{FEEDBACK_LABELS[feedback.label]}</span> on{' '}
+            {new Date(feedback.reviewed_at).toLocaleString()}.
+          </p>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleSubmitFeedback('confirmed_fraud')}
+            disabled={feedbackStatus === 'submitting' || feedbackStatus === 'loading'}
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+              feedback?.label === 'confirmed_fraud'
+                ? 'border-red-600 bg-red-600 text-white'
+                : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Confirm Fraud
+          </button>
+          <button
+            onClick={() => handleSubmitFeedback('confirmed_genuine')}
+            disabled={feedbackStatus === 'submitting' || feedbackStatus === 'loading'}
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+              feedback?.label === 'confirmed_genuine'
+                ? 'border-green-600 bg-green-600 text-white'
+                : 'border-slate-300 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            Confirm Genuine
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-400">
+          Advisory feedback for reviewer records - does not change the score or decision above.
+        </p>
       </div>
 
       <div className="mt-4">
