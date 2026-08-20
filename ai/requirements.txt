@@ -1,3 +1,8 @@
-# No third-party AI/LLM SDK dependencies yet - only abstractions are
-# implemented in this phase. boto3 (for AWS Bedrock) will be added when
-# the real provider implementation is built.
+# GroqLLMProvider (ai/llm/provider.py) calls the Groq API directly over
+# REST via httpx - already a backend dependency (backend/requirements.txt),
+# shared single venv, nothing new to install.
+httpx
+
+# BedrockLLMProvider (ai/llm/provider.py) - official AWS SDK, only needed
+# if AI_PROVIDER=bedrock is actually selected (imported lazily).
+boto3
