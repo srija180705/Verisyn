@@ -17,3 +17,8 @@ class FraudAssessResponse(BaseModel):
     risk_level: str
     decision: str
     triggered_rules: list[str]
+    # The point-in-time behavioral feature values that were fed into the
+    # model/anomaly/rules for this assessment - lets an analyst see WHY,
+    # not just the resulting scores. Already computed as part of scoring;
+    # this only exposes them, it does not add any extra computation.
+    features: dict[str, float | int | bool]
