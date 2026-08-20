@@ -42,3 +42,18 @@ export interface AIExplanation {
   available: boolean
   explanation: string
 }
+
+// Read-only snapshot of ml/rules.py + ml/risk.py, for the Rules tab.
+export interface RuleConfig {
+  name: string
+  weight: number
+  condition: string
+}
+
+export interface RulesConfig {
+  rules: RuleConfig[]
+  max_rule_score: number
+  signal_weights: Record<string, number>
+  risk_level_thresholds: Record<string, number>
+  decision_by_risk_level: Record<string, string>
+}
