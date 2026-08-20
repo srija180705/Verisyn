@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { DemoBadge, isDemoTransaction } from '../components/DemoBadge'
 import { PageHeading } from '../components/PageHeading'
 import { RiskBadge } from '../components/RiskBadge'
 import { TransactionDetail } from '../components/TransactionDetail'
@@ -122,7 +123,10 @@ export function InvestigationsPage() {
                       }`}
                     >
                       <td className="px-4 py-2 font-mono text-xs text-slate-700">
-                        {txn.external_transaction_id}
+                        <span className="inline-flex items-center gap-1.5">
+                          {txn.external_transaction_id}
+                          {isDemoTransaction(txn.external_transaction_id) && <DemoBadge />}
+                        </span>
                       </td>
                       <td className="px-4 py-2 text-slate-700">{txn.customer_name}</td>
                       <td className="px-4 py-2 text-slate-700">

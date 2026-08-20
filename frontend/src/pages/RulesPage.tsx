@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { PageHeading } from '../components/PageHeading'
 import { apiGet } from '../lib/apiClient'
-import type { RulesConfig } from '../lib/types'
+import type { ModelInfo, RulesConfig } from '../lib/types'
 
 type LoadStatus = 'loading' | 'ready' | 'error'
 
 export function RulesPage() {
   const [status, setStatus] = useState<LoadStatus>('loading')
   const [config, setConfig] = useState<RulesConfig | null>(null)
+
+  // Loaded independently - a slow/failed model-info call shouldn't block
+  // the rules table, which is the page's primary content.
+  const [modelInfoStatus, setModelInfoStatus] = useState<LoadStatus>('loading')
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null)
 
   async function load() {
     setStatus('loading')
@@ -20,8 +25,20 @@ export function RulesPage() {
     }
   }
 
+  async function loadModelInfo() {
+    setModelInfoStatus('loading')
+    try {
+      const result = await apiGet<ModelInfo>('/fraud/model-info')
+      setModelInfo(result)
+      setModelInfoStatus('ready')
+    } catch {
+      setModelInfoStatus('error')
+    }
+  }
+
   useEffect(() => {
     load()
+    loadModelInfo()
   }, [])
 
   return (
@@ -120,6 +137,45 @@ export function RulesPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-3 text-sm font-medium text-slate-700">Adaptive Learning</div>
+            {modelInfoStatus === 'loading' && (
+              <p className="text-sm text-slate-400">Loading model info...</p>
+            )}
+            {modelInfoStatus === 'error' && (
+              <p className="text-sm text-red-600">Could not load model info.</p>
+            )}
+            {modelInfoStatus === 'ready' && modelInfo && (
+              <ul className="space-y-1 text-sm text-slate-700">
+                <li className="flex justify-between">
+                  <span className="text-slate-500">Model Version</span>
+                  <span>v{modelInfo.version}</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-slate-500">Verified Feedback Used</span>
+                  <span>{modelInfo.feedback_samples_used}</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-slate-500">Retraining</span>
+                  <span>Controlled / Manual</span>
+                </li>
+                <li className="flex justify-between">
+                  <span className="text-slate-500">Last Updated</span>
+                  <span>
+                    {modelInfo.is_retrained && modelInfo.trained_at
+                      ? new Date(modelInfo.trained_at).toLocaleString()
+                      : 'Baseline model (not yet retrained)'}
+                  </span>
+                </li>
+              </ul>
+            )}
+            <p className="mt-3 text-xs text-slate-400">
+              Retraining only runs on reviewer-verified feedback (never the model's own
+              predictions), and only above a minimum sample threshold. See{' '}
+              <span className="font-mono">ml/retrain.py</span>.
+            </p>
           </div>
         </div>
       )}
