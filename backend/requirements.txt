@@ -15,3 +15,6 @@ pandas==2.2.3
 numpy==2.2.1
 scikit-learn==1.6.0
 joblib==1.5.3
+
+# BedrockLLMProvider (ai/llm/provider.py), only used when AI_PROVIDER=bedrock.
+boto3==1.43.75
