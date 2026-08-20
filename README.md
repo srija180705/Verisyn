@@ -1,4 +1,4 @@
-# Fraud Intelligence Platform
+# Verisyn - Fraud Intelligence Platform
 
 Real-time, AI-assisted fraud detection and investigation platform for a
 digital lending ecosystem.
@@ -15,11 +15,10 @@ investigation - plus a controlled way to feed verified reviewer
 corrections back into the model.
 
 The system is an **internal Fraud Operations and Investigation Platform**
-for fraud analysts. There is no customer-facing UI in this prototype.
+for fraud analysts.
 
-Full requirements: [docs/requirements.md](./docs/requirements.md).
 
-## What's implemented
+## What's there
 
 - **Fraud scoring pipeline** - Logistic Regression + Isolation Forest
   (anomaly) + a deterministic rule engine, combined via weighted risk
@@ -40,10 +39,6 @@ Full requirements: [docs/requirements.md](./docs/requirements.md).
   transaction `Confirmed Fraud`/`Confirmed Genuine`; verified feedback
   accumulates and can be used for an explicit, manually-triggered
   retrain, gated by a minimum sample threshold, with model versioning.
-- **Demo data** - a small, clearly `DEMO-`-prefixed set of synthetic
-  transactions exercising specific fraud scenarios (large-amount outlier,
-  velocity burst, new device/IP, failed-login burst, device/IP farm),
-  separate from the original dataset.
 
 ## Architecture
 
