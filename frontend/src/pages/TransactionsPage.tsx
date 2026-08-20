@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { DemoBadge, isDemoTransaction } from '../components/DemoBadge'
 import { PageHeading } from '../components/PageHeading'
 import { TransactionDetail } from '../components/TransactionDetail'
+import { onRowKeyDown } from '../lib/a11y'
 import { apiGet, apiPost } from '../lib/apiClient'
 import type { FraudAssessment, TransactionListResponse, TransactionSummary } from '../lib/types'
 
@@ -87,25 +87,37 @@ export function TransactionsPage() {
       />
 
       <div className="mb-4 flex flex-wrap gap-3">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by transaction ID, customer name, or customer ID..."
-          className="min-w-[280px] flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-        >
-          <option value="">All statuses</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <div className="min-w-[280px] flex-1">
+          <label htmlFor="transaction-search" className="sr-only">
+            Search by transaction ID, customer name, or customer ID
+          </label>
+          <input
+            id="transaction-search"
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by transaction ID, customer name, or customer ID..."
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="transaction-status" className="sr-only">
+            Filter by status
+          </label>
+          <select
+            id="transaction-status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="">All statuses</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {listStatus === 'error' && (
@@ -148,15 +160,16 @@ export function TransactionsPage() {
                     <tr
                       key={txn.id}
                       onClick={() => selectTransaction(txn)}
-                      className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
+                      onKeyDown={onRowKeyDown(() => selectTransaction(txn))}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View details for transaction ${txn.external_transaction_id}`}
+                      className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 focus:outline focus:outline-2 focus:outline-offset-[-2px] focus:outline-slate-900 ${
                         txn.id === selectedId ? 'bg-slate-50' : ''
                       }`}
                     >
                       <td className="px-4 py-2 font-mono text-xs text-slate-700">
-                        <span className="inline-flex items-center gap-1.5">
-                          {txn.external_transaction_id}
-                          {isDemoTransaction(txn.external_transaction_id) && <DemoBadge />}
-                        </span>
+                        {txn.external_transaction_id}
                       </td>
                       <td className="px-4 py-2 text-slate-700">
                         {txn.amount.toFixed(2)} {txn.currency}

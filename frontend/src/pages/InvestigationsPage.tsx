@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { DemoBadge, isDemoTransaction } from '../components/DemoBadge'
 import { PageHeading } from '../components/PageHeading'
 import { RiskBadge } from '../components/RiskBadge'
 import { TransactionDetail } from '../components/TransactionDetail'
+import { onRowKeyDown } from '../lib/a11y'
 import { apiGet, apiPost } from '../lib/apiClient'
 import type { FraudAssessment, TransactionListResponse, TransactionSummary } from '../lib/types'
 
@@ -118,15 +118,16 @@ export function InvestigationsPage() {
                     <tr
                       key={txn.id}
                       onClick={() => setSelectedId(txn.id)}
-                      className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
+                      onKeyDown={onRowKeyDown(() => setSelectedId(txn.id))}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View details for transaction ${txn.external_transaction_id}`}
+                      className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 focus:outline focus:outline-2 focus:outline-offset-[-2px] focus:outline-slate-900 ${
                         txn.id === selectedId ? 'bg-slate-50' : ''
                       }`}
                     >
                       <td className="px-4 py-2 font-mono text-xs text-slate-700">
-                        <span className="inline-flex items-center gap-1.5">
-                          {txn.external_transaction_id}
-                          {isDemoTransaction(txn.external_transaction_id) && <DemoBadge />}
-                        </span>
+                        {txn.external_transaction_id}
                       </td>
                       <td className="px-4 py-2 text-slate-700">{txn.customer_name}</td>
                       <td className="px-4 py-2 text-slate-700">
