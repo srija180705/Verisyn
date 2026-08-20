@@ -43,6 +43,17 @@ class RulesConfigResponse(BaseModel):
     decision_by_risk_level: dict[str, str]
 
 
+class ModelInfoResponse(BaseModel):
+    """Current ML model version/provenance, for visibility only - never
+    used by the scoring pipeline itself. See ml/retrain.py.
+    """
+
+    version: int
+    trained_at: str | None
+    feedback_samples_used: int
+    is_retrained: bool
+
+
 class AIExplanationResponse(BaseModel):
     """Advisory-only: a plain-language explanation of an already-computed
     assessment. `available=False` when no LLM provider is configured or
