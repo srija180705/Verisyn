@@ -80,27 +80,22 @@ flowchart TD
 ```mermaid
 flowchart TD
     RV["Reviewer Feedback<br/>(Confirmed Fraud / Confirmed Genuine)"] --> VL["Verified Labels<br/>(transaction_feedback table)"]
-    VL --> CR["Controlled Retraining<br/>(python ml/retrain.py - manual, threshold-gated)"]
-    CR --> VM["Versioned ML Model<br/>(model_metadata.json + backed-up previous version)"]
+    VL --> CR["Controlled Retraining<br/>"]
+    CR --> VM["Versioned ML Model<br/>"]
 ```
 
 **The LLM never computes or changes the fraud score/decision.** It only
-explains evidence the fraud engine already produced - see
-`ai/prompts/investigation.py`'s guardrails and
-`backend/app/services/ai_explanation.py`. Full architecture detail:
-[docs/architecture.md](./docs/architecture.md).
+explains evidence the fraud engine already produced.
 
 ## Technology Stack
 
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS
 - **Backend:** Python, FastAPI, Pydantic, SQLAlchemy, Alembic
-- **Database:** PostgreSQL (`pgvector` extension enabled but not
-  currently used - no retrieval/RAG use case exists in this prototype)
+- **Database:** PostgreSQL
 - **ML:** pandas, NumPy, scikit-learn (Logistic Regression, Isolation
   Forest)
 - **AI:** Provider-abstracted LLM (Groq or AWS Bedrock), prompt templates
-  with guardrails - explanation only, no embeddings/RAG/agents (not
-  needed for this use case)
+  with guardrails - explanation only.
 - **Infra:** Docker / docker-compose (PostgreSQL only)
 - **Testing:** pytest
 
@@ -255,23 +250,3 @@ AI abstraction sanity checks (repo root):
 ```bash
 backend/.venv/Scripts/python.exe -m pytest tests/ -q
 ```
-
-## Out of Scope (Intentionally)
-
-To keep this prototype finishable and its scope traceable to the actual
-requirements, the following are deliberately not implemented:
-
-- **Authentication/authorization** - internal single-operator hackathon
-  tool; no multi-user access control need.
-- **RAG / vector search / embeddings** - the AI explanation prompt is
-  fully self-contained (the evidence the fraud engine already produced);
-  there's no genuine retrieval need. `pgvector` is enabled in Postgres
-  but unused.
-- **Agent frameworks** - a single grounded prompt call is the right shape
-  for "explain this evidence"; no multi-step reasoning is needed.
-- **Kafka / Celery / queues / microservices** - "real-time" here means
-  synchronous request/response (`POST /transactions` assesses inline),
-  which is the correct interpretation at this scale and requirement.
-- **Automatic/continuous retraining** - retraining is always manual and
-  explicit, gated by a minimum verified-feedback threshold, exactly as
-  specified.
